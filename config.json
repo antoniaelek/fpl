@@ -1,3 +1,4 @@
 {
-    "GameweekOneID": 3260
+    "GameweekOneID": 3260,
+    "DatabaseFile": "./fpl.db"
 }

@@ -17,5 +17,6 @@ func main() {
 	}
 
 	scores := scraper.Scrape(&config, 21)
+	scraper.RefreshStore(&config, scores)
 	fmt.Println(len(scores))
 }
