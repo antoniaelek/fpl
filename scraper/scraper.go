@@ -8,6 +8,11 @@ import (
 	"github.com/gocolly/colly"
 )
 
+// Config represents application configuration
+type Config struct {
+	GameweekOneID int
+}
+
 // Score represents goal score match event.
 type Score struct {
 	Minute        string
@@ -20,7 +25,7 @@ type Score struct {
 }
 
 // Scrape scrapes gameweek live scores
-func Scrape(gameweek int) []Score {
+func Scrape(config *Config, gameweek int) []Score {
 	result := make([]Score, 0)
 
 	c := colly.NewCollector()
@@ -58,7 +63,8 @@ func Scrape(gameweek int) []Score {
 		})
 	})
 
-	c.Visit("https://www.premierleague.com/matchweek/" + strconv.Itoa(gameweek) + "/blog")
+	gameweekID := config.GameweekOneID + gameweek - 1
+	c.Visit("https://www.premierleague.com/matchweek/" + strconv.Itoa(gameweekID) + "/blog")
 
 	return result
 }
