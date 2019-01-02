@@ -12,12 +12,6 @@ import (
 	"github.com/gocolly/colly"
 )
 
-// Config represents scraper configuration.
-type Config struct {
-	GameweekOneID int
-	DatabaseFile  string
-}
-
 // Score represents goal score match event.
 type Score struct {
 	Minute           string
@@ -44,69 +38,19 @@ type Player struct {
 	WebName    string
 }
 
-// ScoreDbEntry represent goal score match event as stored in database.
-type ScoreDbEntry struct {
-	Score     *Score
-	Timestamp time.Time
-	Processed bool
+// ScrapeInMemory scrapes gameweek live scores.
+func (scraper *Scraper) ScrapeInMemory(gameweek int) []Score {
+	return scraper.scrapeScores(gameweek)
 }
 
-// ScrapeTeams scrapes teams.
-func ScrapeTeams(config *Config) (teams []Team, err error) {
-	result, err := getJSON("http://fantasy.premierleague.com/drf/bootstrap-static")
-	if err != nil {
-		return nil, err
-	}
-
-	teams = make([]Team, 0)
-	switch elements := result["teams"].(type) {
-	case []interface{}:
-		for _, elem := range elements {
-			switch team := elem.(type) {
-			case map[string]interface{}:
-				t := Team{
-					Name:      team["name"].(string),
-					ShortName: team["short_name"].(string),
-				}
-				teams = append(teams, t)
-			}
-		}
-	}
-
-	return teams, err
+// ScrapeInMemoryFull scrapes gameweek live scores, teams, and players.
+func (scraper *Scraper) ScrapeInMemoryFull(gameweek int) (scores []Score, teams []Team, players []Player) {
+	teams, _ = scraper.scrapeTeams()
+	players, _ = scraper.scrapePlayers()
+	return scraper.scrapeScores(gameweek), teams, players
 }
 
-// ScrapePlayers scrapes players.
-func ScrapePlayers(config *Config) (players []Player, err error) {
-	result, err := getJSON("http://fantasy.premierleague.com/drf/bootstrap-static")
-	if err != nil {
-		return nil, err
-	}
-
-	players = make([]Player, 0)
-	switch elements := result["elements"].(type) {
-	case []interface{}:
-		for _, element := range elements {
-			switch player := element.(type) {
-			case map[string]interface{}:
-				pl := Player{
-					Name:       player["first_name"].(string) + " " + player["second_name"].(string),
-					FirstName:  player["first_name"].(string),
-					SecondName: player["second_name"].(string),
-					WebName:    player["web_name"].(string),
-				}
-				players = append(players, pl)
-			}
-		}
-	}
-
-	return players, err
-}
-
-// ScrapeLiveScores scrapes gameweek live scores.
-// Method takes two parameters: pointer to application config and gameweek to scrape.
-// It returns slice of scraped score events in gameweek.
-func ScrapeLiveScores(config *Config, gameweek int) []Score {
+func (scraper *Scraper) scrapeScores(gameweek int) []Score {
 	result := make([]Score, 0)
 
 	c := colly.NewCollector()
@@ -146,10 +90,60 @@ func ScrapeLiveScores(config *Config, gameweek int) []Score {
 		})
 	})
 
-	gameweekID := config.GameweekOneID + gameweek - 1
+	gameweekID := scraper.GameweekOneID + gameweek - 1
 	c.Visit("https://www.premierleague.com/matchweek/" + strconv.Itoa(gameweekID) + "/blog")
 
 	return result
+}
+
+func (scraper *Scraper) scrapeTeams() (teams []Team, err error) {
+	result, err := getJSON("http://fantasy.premierleague.com/drf/bootstrap-static")
+	if err != nil {
+		return nil, err
+	}
+
+	teams = make([]Team, 0)
+	switch elements := result["teams"].(type) {
+	case []interface{}:
+		for _, elem := range elements {
+			switch team := elem.(type) {
+			case map[string]interface{}:
+				t := Team{
+					Name:      team["name"].(string),
+					ShortName: team["short_name"].(string),
+				}
+				teams = append(teams, t)
+			}
+		}
+	}
+
+	return teams, err
+}
+
+func (scraper *Scraper) scrapePlayers() (players []Player, err error) {
+	result, err := getJSON("http://fantasy.premierleague.com/drf/bootstrap-static")
+	if err != nil {
+		return nil, err
+	}
+
+	players = make([]Player, 0)
+	switch elements := result["elements"].(type) {
+	case []interface{}:
+		for _, element := range elements {
+			switch player := element.(type) {
+			case map[string]interface{}:
+				pl := Player{
+					Name:       player["first_name"].(string) + " " + player["second_name"].(string),
+					FirstName:  player["first_name"].(string),
+					SecondName: player["second_name"].(string),
+					WebName:    player["web_name"].(string),
+				}
+				players = append(players, pl)
+			}
+		}
+	}
+
+	return players, err
 }
 
 func getJSON(url string) (result map[string]interface{}, err error) {

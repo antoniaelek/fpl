@@ -41,46 +41,6 @@ func main() {
 
 	// Scrape
 	scraperConfig := scraper.Config{DatabaseFile: config.DatabaseFile, GameweekOneID: config.GameweekOneID}
-	updatePlayers(&scraperConfig)
-	updateTeams(&scraperConfig)
-	updateScores(&scraperConfig, gameweek)
-}
-
-// Scrape scores & update database
-func updateScores(scraperConfig *scraper.Config, gameweek int) {
-	scores := scraper.ScrapeLiveScores(scraperConfig, gameweek)
-	err := scraper.RefreshScoresBucket(scraperConfig, scores)
-	if err != nil {
-		log.Fatalln("Error inserting scores: ", err)
-	} else {
-		log.Println("Parsed and inserted scores.")
-	}
-}
-
-// Scrape teams & update database
-func updateTeams(scraperConfig *scraper.Config) {
-	teams, err := scraper.ScrapeTeams(scraperConfig)
-	if err != nil {
-		log.Fatalln("Error parsing teams: ", err)
-	}
-	err = scraper.RefreshTeamsBucket(scraperConfig, teams)
-	if err != nil {
-		log.Fatalln("Error inserting teams: ", err)
-	} else {
-		log.Println("Parsed and inserted teams.")
-	}
-}
-
-// Scrape players & update database
-func updatePlayers(scraperConfig *scraper.Config) {
-	players, err := scraper.ScrapePlayers(scraperConfig)
-	if err != nil {
-		log.Fatalln("Error parsing players: ", err)
-	}
-	err = scraper.RefreshPlayersBucket(scraperConfig, players)
-	if err != nil {
-		log.Fatalln("Error inserting players: ", err)
-	} else {
-		log.Println("Parsed and inserted players.")
-	}
+	scraper := scraper.NewScraper(&scraperConfig)
+	scraper.ScrapeToDbFull(gameweek)
 }

@@ -10,8 +10,27 @@ import (
 	"github.com/boltdb/bolt"
 )
 
-// RefreshScoresBucket updates gameweek scores bucket.
-func RefreshScoresBucket(config *Config, scores []Score) error {
+// ScoreDbEntry represent goal score match event as stored in database.
+type ScoreDbEntry struct {
+	Score     *Score
+	Timestamp time.Time
+	Processed bool
+}
+
+// ScrapeToDb scrapes scores & updates database
+func (scraper *Scraper) ScrapeToDb(gameweek int) {
+	scraper.updateScores(gameweek)
+}
+
+// ScrapeToDbFull scrapes scores & updates database
+func (scraper *Scraper) ScrapeToDbFull(gameweek int) {
+	scraper.updateTeams()
+	scraper.updatePlayers()
+	scraper.updateScores(gameweek)
+}
+
+// Updates gameweek scores bucket.
+func (scraper *Scraper) refreshScoresBucket(scores []Score) error {
 	if scores == nil || len(scores) == 0 {
 		return nil
 	}
@@ -21,11 +40,11 @@ func RefreshScoresBucket(config *Config, scores []Score) error {
 		interfaceSlice[i] = el
 	}
 
-	return refreshBucket(config, strconv.Itoa(scores[0].Gameweek), interfaceSlice, scoresBucketKey, scoresBuckeValue, scoresBucketValueFresh)
+	return scraper.refreshBucket(strconv.Itoa(scores[0].Gameweek), interfaceSlice, scoresBucketKey, scoresBuckeValue, scoresBucketValueFresh)
 }
 
-// RefreshTeamsBucket updates teams bucket.
-func RefreshTeamsBucket(config *Config, teams []Team) error {
+// Updates teams bucket.
+func (scraper *Scraper) refreshTeamsBucket(teams []Team) error {
 	if teams == nil || len(teams) == 0 {
 		return nil
 	}
@@ -35,11 +54,11 @@ func RefreshTeamsBucket(config *Config, teams []Team) error {
 		interfaceSlice[i] = el
 	}
 
-	return refreshBucket(config, "teams", interfaceSlice, teamsBucketKey, teamsBucketValue, teamsBucketValueFresh)
+	return scraper.refreshBucket("teams", interfaceSlice, teamsBucketKey, teamsBucketValue, teamsBucketValueFresh)
 }
 
-// RefreshPlayersBucket updates players bucket.
-func RefreshPlayersBucket(config *Config, players []Player) error {
+// Updates players bucket.
+func (scraper *Scraper) refreshPlayersBucket(players []Player) error {
 	if players == nil || len(players) == 0 {
 		return nil
 	}
@@ -49,7 +68,7 @@ func RefreshPlayersBucket(config *Config, players []Player) error {
 		interfaceSlice[i] = el
 	}
 
-	return refreshBucket(config, "players", interfaceSlice, playersBucketKey, playersBucketValue, playersBucketValueFresh)
+	return scraper.refreshBucket("players", interfaceSlice, playersBucketKey, playersBucketValue, playersBucketValueFresh)
 }
 
 func scoresBucketKey(score interface{}) (result []byte, err error) {
@@ -164,7 +183,7 @@ func playersBucketValueFresh(value []byte, player interface{}) (isFresh bool, er
 	return
 }
 
-func refreshBucket(config *Config, bucketName string, data []interface{},
+func (scraper *Scraper) refreshBucket(bucketName string, data []interface{},
 	keySelector func(e interface{}) (result []byte, err error),
 	valueSelector func(e interface{}) (result []byte, err error),
 	valueFreshCheck func(value []byte, freshValue interface{}) (isFresh bool, err error)) error {
@@ -174,7 +193,7 @@ func refreshBucket(config *Config, bucketName string, data []interface{},
 	}
 
 	// Open database, create it if it doesn't exist
-	db, err := bolt.Open(config.DatabaseFile, 0600, &bolt.Options{Timeout: 1 * time.Second})
+	db, err := bolt.Open(scraper.DatabaseFile, 0600, &bolt.Options{Timeout: 1 * time.Second})
 	if err != nil {
 		log.Fatalln("Error opening connection to database:", err)
 		return err
