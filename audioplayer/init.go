@@ -1,4 +1,4 @@
-package player
+package audioplayer
 
 import "fmt"
 
@@ -9,9 +9,9 @@ type Config struct {
 	Teams       []string
 }
 
-// NewPlayer is constructor for Player type.
-func NewPlayer(config *Config) *Player {
-	player := Player{AudioFolder: config.AudioFolder, Language: config.Language}
+// NewAudioPlayer is constructor for AudioPlayer type.
+func NewAudioPlayer(config *Config) *AudioPlayer {
+	player := AudioPlayer{AudioFolder: config.AudioFolder, Language: config.Language}
 
 	// Scores audio files
 	for i := 0; i <= 10; i++ {
