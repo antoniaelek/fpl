@@ -37,9 +37,9 @@ type ScoreDbEntry struct {
 	Processed bool
 }
 
-// Scrape scrapes gameweek live scores
-// Takes pointer to Config and gameweek to scrape
-// Returns slice of scraped score events
+// Scrape scrapes gameweek live scores.
+// Method takes two parameters: pointer to application config and gameweek to scrape.
+// It returns slice of scraped score events in gameweek.
 func Scrape(config *Config, gameweek int) []Score {
 	result := make([]Score, 0)
 
@@ -87,7 +87,8 @@ func Scrape(config *Config, gameweek int) []Score {
 }
 
 // RefreshStore updates scores data in database store
-// Takes reference to config and slice of score events
+// Method takes two parameters: pointer to application config and slice of score events
+// It returns an error, or nil if no error occurred.
 func RefreshStore(config *Config, scores []Score) error {
 	// No data
 	if scores == nil || len(scores) == 0 {
@@ -119,8 +120,11 @@ func RefreshStore(config *Config, scores []Score) error {
 			// Check if element with this key exists
 			value := b.Get([]byte(key))
 			if value != nil {
-				// TODO check if something's changed in data
-				continue
+				var data ScoreDbEntry
+				err = json.Unmarshal(value, data)
+				if err == nil && data.Score.Goal == score.Goal && score.Assist == data.Score.Assist {
+					continue
+				}
 			}
 
 			// Serialize value
