@@ -1,4 +1,6 @@
 {
     "GameweekOneID": 3260,
-    "DatabaseFile": "./fpl.db"
+    "DatabaseFile": "./fpl.db",
+    "Language": "en-uk",
+    "AudioFolder": "audio"
 }

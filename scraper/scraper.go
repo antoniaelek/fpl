@@ -4,15 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/boltdb/bolt"
 	"github.com/gocolly/colly"
 )
 
-// Config represents application configuration
+// Config represents scraper configuration.
 type Config struct {
 	GameweekOneID int
 	DatabaseFile  string
@@ -20,14 +20,28 @@ type Config struct {
 
 // Score represents goal score match event.
 type Score struct {
-	Minute        string
-	Goal          string
-	Assist        string
-	HomeTeam      string
-	AwayTeam      string
-	HomeTeamGoals int
-	AwayTeamGoals int
-	Gameweek      int
+	Minute           string
+	GoalPlayerName   string
+	AssistPlayerName string
+	HomeTeam         string
+	AwayTeam         string
+	HomeTeamGoals    int
+	AwayTeamGoals    int
+	Gameweek         int
+}
+
+// Team represents a team.
+type Team struct {
+	Name      string
+	ShortName string
+}
+
+// Player represents a player.
+type Player struct {
+	Name       string
+	FirstName  string
+	SecondName string
+	WebName    string
 }
 
 // ScoreDbEntry represent goal score match event as stored in database.
@@ -37,10 +51,62 @@ type ScoreDbEntry struct {
 	Processed bool
 }
 
-// Scrape scrapes gameweek live scores.
+// ScrapeTeams scrapes teams.
+func ScrapeTeams(config *Config) (teams []Team, err error) {
+	result, err := getJSON("http://fantasy.premierleague.com/drf/bootstrap-static")
+	if err != nil {
+		return nil, err
+	}
+
+	teams = make([]Team, 0)
+	switch elements := result["teams"].(type) {
+	case []interface{}:
+		for _, elem := range elements {
+			switch team := elem.(type) {
+			case map[string]interface{}:
+				t := Team{
+					Name:      team["name"].(string),
+					ShortName: team["short_name"].(string),
+				}
+				teams = append(teams, t)
+			}
+		}
+	}
+
+	return teams, err
+}
+
+// ScrapePlayers scrapes players.
+func ScrapePlayers(config *Config) (players []Player, err error) {
+	result, err := getJSON("http://fantasy.premierleague.com/drf/bootstrap-static")
+	if err != nil {
+		return nil, err
+	}
+
+	players = make([]Player, 0)
+	switch elements := result["elements"].(type) {
+	case []interface{}:
+		for _, element := range elements {
+			switch player := element.(type) {
+			case map[string]interface{}:
+				pl := Player{
+					Name:       player["first_name"].(string) + " " + player["second_name"].(string),
+					FirstName:  player["first_name"].(string),
+					SecondName: player["second_name"].(string),
+					WebName:    player["web_name"].(string),
+				}
+				players = append(players, pl)
+			}
+		}
+	}
+
+	return players, err
+}
+
+// ScrapeLiveScores scrapes gameweek live scores.
 // Method takes two parameters: pointer to application config and gameweek to scrape.
 // It returns slice of scraped score events in gameweek.
-func Scrape(config *Config, gameweek int) []Score {
+func ScrapeLiveScores(config *Config, gameweek int) []Score {
 	result := make([]Score, 0)
 
 	c := colly.NewCollector()
@@ -73,8 +139,8 @@ func Scrape(config *Config, gameweek int) []Score {
 					assist = assist[5:len(assist)]
 				}
 				score.Minute = min
-				score.Goal = player
-				score.Assist = assist
+				score.GoalPlayerName = player
+				score.AssistPlayerName = assist
 				result = append(result, score)
 			}
 		})
@@ -86,63 +152,33 @@ func Scrape(config *Config, gameweek int) []Score {
 	return result
 }
 
-// RefreshStore updates scores data in database store
-// Method takes two parameters: pointer to application config and slice of score events
-// It returns an error, or nil if no error occurred.
-func RefreshStore(config *Config, scores []Score) error {
-	// No data
-	if scores == nil || len(scores) == 0 {
-		return nil
-	}
-
-	// Open database, create it if it doesn't exist
-	db, err := bolt.Open(config.DatabaseFile, 0600, &bolt.Options{Timeout: 1 * time.Second})
+func getJSON(url string) (result map[string]interface{}, err error) {
+	timeout := time.Duration(10 * time.Second)
+	client := http.Client{Timeout: timeout}
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Fatalln("Something went wrong:", err)
+		log.Fatalln(err)
 	}
-	defer db.Close()
 
-	// Update data in database
-	db.Update(func(tx *bolt.Tx) error {
-		// Try to create bucket
-		b, err := tx.CreateBucketIfNotExists([]byte(strconv.Itoa(scores[0].Gameweek)))
-		if err != nil {
-			return fmt.Errorf("Create bucket error: %s", err)
-		}
+	req.Header.Set("User-Agent", "Test")
 
-		// Fill bucket
-		for i := 0; i < len(scores); i++ {
-			score := scores[i]
+	resp, err := client.Do(req)
+	if err != nil {
+		err = fmt.Errorf("Cannot fetch URL %q: %v", url, err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		err = fmt.Errorf("Unexpected http GET status: %s", resp.Status)
+		return
+	}
 
-			// Calculate key
-			key := score.Minute + "_" + score.HomeTeam + "_" + strconv.Itoa(score.HomeTeamGoals) + "_" + score.AwayTeam + "_" + strconv.Itoa(score.AwayTeamGoals)
+	// body, err := ioutil.ReadAll(resp.Body)
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	// err = json.Unmarshal(body, &result)
+	if err != nil {
+		err = fmt.Errorf("Cannot decode JSON: %v", err)
+	}
 
-			// Check if element with this key exists
-			value := b.Get([]byte(key))
-			if value != nil {
-				var data ScoreDbEntry
-				err = json.Unmarshal(value, data)
-				if err == nil && data.Score.Goal == score.Goal && score.Assist == data.Score.Assist {
-					continue
-				}
-			}
-
-			// Serialize value
-			scoreDb := ScoreDbEntry{Score: &score, Timestamp: time.Now(), Processed: false}
-			value, err = json.Marshal(scoreDb)
-			if err != nil {
-				return fmt.Errorf("Json serialization error: %s", err)
-			}
-
-			// Add the new key-value pair
-			err = b.Put([]byte(key), []byte(value))
-			if err != nil {
-				return fmt.Errorf("Update bucket error: %s", err)
-			}
-		}
-		return nil
-	})
-
-	// If any error occurred return it
-	return err
+	return
 }
